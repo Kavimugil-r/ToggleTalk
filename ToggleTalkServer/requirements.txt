@@ -1,0 +1,25 @@
+# ToggleTalk Server Requirements
+
+
+# Timezone libraries required for scheduling
+pytz==2025.2
+tzlocal==5.3.1
+apscheduler==3.11.0
+
+# RPi.GPIO for Raspberry Pi GPIO control
+# Note: This package is only available on Raspberry Pi
+# For other platforms, the server will run in simulation mode
+RPi.GPIO==0.7.1
+
+# Flask web framework for API endpoints
+flask==3.0.3
+flask-cors==5.0.0
+
+# Waitress WSGI server for production deployment
+waitress==3.0.0
+
+# Psutil for system monitoring and process management
+psutil==6.1.0
+
+# Requests for HTTP client operations
+requests==2.32.3

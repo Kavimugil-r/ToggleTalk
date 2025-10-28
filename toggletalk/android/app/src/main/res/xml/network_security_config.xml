@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">localhost</domain>
+        <!-- Add your server's domain here when deploying to production -->
+        <!-- <domain includeSubdomains="true">your-server-domain.com</domain> -->
+    </domain-config>
+</network-security-config>
