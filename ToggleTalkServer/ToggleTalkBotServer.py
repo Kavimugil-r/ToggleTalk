@@ -66,7 +66,10 @@ SERVER_PORT = int(os.getenv("SERVER_PORT", "7850"))
 GPIO_PINS = {
     'light': int(os.getenv("LIGHT_GPIO_PIN", "23")),      # Relay 1 - Light
     'ac': int(os.getenv("AC_GPIO_PIN", "24")),             # Relay 2 - AC
-    'washing_machine': int(os.getenv("WASHING_MACHINE_GPIO_PIN", "25"))  # Relay 3 - Washing Machine
+    'washing_machine': int(os.getenv("WASHING_MACHINE_GPIO_PIN", "25")),  # Relay 3 - Washing Machine
+    'laser_module': int(os.getenv("LASER_MODULE_GPIO_PIN", "27")),  # Laser Module
+    'ldr_sensor': int(os.getenv("LDR_SENSOR_GPIO_PIN", "22")),  # LDR Sensor
+    'buzzer': int(os.getenv("BUZZER_GPIO_PIN", "5"))  # Buzzer
 }
 
 # File paths
@@ -103,8 +106,8 @@ def format_latency_visualization():
     max_latency = max(latencies)
     min_latency = min(latencies)
     
-    # Create a simple bar visualization
-    bar_length = 20
+    # Create a more detailed bar visualization
+    bar_length = 30
     avg_bar = int((avg_latency / max_latency) * bar_length) if max_latency > 0 else 0
     visual_bar = "█" * avg_bar + "░" * (bar_length - avg_bar)
     
@@ -125,7 +128,12 @@ def format_message_flow_visualization():
     bot_pct = (bot_responses / total) * 100 if total > 0 else 0
     notif_pct = (notifications / total) * 100 if total > 0 else 0
     
-    return f"Msg Flow: 👤{user_pct:.0f}% 🤖{bot_pct:.0f}% 🔔{notif_pct:.0f}%"
+    # Create a more visual bar representation
+    user_bar = "█" * int(user_pct/5)  # Scale down for better fit
+    bot_bar = "█" * int(bot_pct/5)
+    notif_bar = "█" * int(notif_pct/5)
+    
+    return f"Msg Flow: 👤 User:{user_pct:.0f}% {user_bar}  🤖 Bot:{bot_pct:.0f}% {bot_bar}  🔔 Notif:{notif_pct:.0f}% {notif_bar}"
 
 def format_ngrok_style_visualization():
     """Create an ngrok-style visualization for the server"""
@@ -134,26 +142,31 @@ def format_ngrok_style_visualization():
     
     # Get current message statistics
     active_users = len(set(msg['user'] for msg in message_history if msg['type'] == 'user'))
-    pending_notifications = len(notification_queue.queue) if hasattr(notification_queue, 'queue') else 0
+    pending_notifications = 0  # Default value
+    
+    # Raspberry Pi specific system info
+    import platform
+    pi_model = platform.machine()
+    system_info = f"RPi {pi_model}" if 'arm' in pi_model.lower() else "Dev Environment"
     
     return f"""
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                           TOGGLETALK FLASK SERVER                            ║
-╠══════════════════════════════════════════════════════════════════════════════╣
-║  Uptime: {uptime_str:<52} ║
-║  Messages Processed: {total_messages_processed:<42} ║
-║  Avg Processing Time: {total_processing_time/max(1, total_messages_processed):.3f}s                                    ║
-║  Active Users: {active_users:<48} ║
-║  Pending Notifications: {pending_notifications:<38} ║
-║                                                                              ║
-║  Message Flow: {format_message_flow_visualization():<50} ║
-║  Latency: {format_latency_visualization():<52} ║
-║                                                                              ║
-║  Endpoints:                                                                  ║
-║    API Server: http://localhost:{SERVER_PORT}/api                            ║
-║                                                                              ║
-║  Press Ctrl+C to stop the server                                             ║
-╚══════════════════════════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════════════════════════════════════════════╗
+║                                    TOGGLETALK FLASK SERVER                                           ║
+╠══════════════════════════════════════════════════════════════════════════════════════════════════════╣
+║  🟢 Status: ONLINE                             🕒 Uptime: {uptime_str:<35} ║
+║  📨 Messages: {total_messages_processed:<38} 📊 Avg Time: {total_processing_time/max(1, total_messages_processed):.3f}s ║
+║  👥 Users: {active_users:<40} 🔔 Pending: {pending_notifications:<30} ║
+║  🖥️  System: {system_info:<76} ║
+║                                                                                                      ║
+║  {format_message_flow_visualization():<88} ║
+║  {format_latency_visualization():<88} ║
+║                                                                                                      ║
+║  🌐 Endpoints:                                                                                       ║
+║     API Server: http://localhost:{SERVER_PORT}/api                                                    ║
+║                                                                                                      ║
+║  📋 Commands:                                                                                        ║
+║     Press Ctrl+C to stop the server                                                                  ║
+╚══════════════════════════════════════════════════════════════════════════════════════════════════════╝
 """
 
 def update_console_display():
@@ -203,13 +216,24 @@ def update_status_line(line):
 print("ToggleTalk Flask Server Starting...")
 print(f"Authorized Chat ID: {AUTHORIZED_CHAT_ID}")
 
+# Raspberry Pi detection and info
+import platform
+if 'arm' in platform.machine().lower():
+    print("🟢 Running on Raspberry Pi - GPIO control enabled")
+else:
+    print("💻 Running in development mode - GPIO simulation active")
+
 # Initialize GPIO if available
 if GPIO_AVAILABLE and GPIO is not None:
     try:
         GPIO.setmode(GPIO.BCM)
-        for pin in GPIO_PINS.values():
-            GPIO.setup(pin, GPIO.OUT)
-            GPIO.output(pin, GPIO.HIGH)  # Turn off relays initially (assuming active low)
+        # Setup relay pins (output)
+        for device, pin in GPIO_PINS.items():
+            if device in ['light', 'ac', 'washing_machine', 'laser_module', 'buzzer']:
+                GPIO.setup(pin, GPIO.OUT)
+                GPIO.output(pin, GPIO.LOW if device == 'laser_module' else GPIO.HIGH)  # Turn off relays/buzzer, turn off laser initially
+            elif device == 'ldr_sensor':
+                GPIO.setup(pin, GPIO.IN)  # LDR sensor as input
         print("GPIO initialized successfully")
     except Exception as e:
         print(f"Error initializing GPIO: {e}")
@@ -230,6 +254,8 @@ class ToggleTalkFlaskServer:
             'ac': {'status': 'off'},
             'washing_machine': {'status': 'off'}
         }
+        # Home security system state
+        self.security_system_active = False
         self.chat_ids = self.load_chat_ids()
         self.scheduled_tasks = self.load_scheduled_tasks()
         self.pending_notifications = self.load_pending_notifications()  # Load pending notifications
@@ -241,9 +267,11 @@ class ToggleTalkFlaskServer:
     
     def generate_response(self, message_text: str, user_id: int, user_name: str) -> str:
         """Generate a response to the user's message"""
+        logger.info(f"Generating response for: {message_text} from {user_name} (ID: {user_id})")
         # Process home automation commands first
         home_automation_response = self.process_home_automation(message_text, user_name)
         if home_automation_response:
+            logger.info(f"Home automation response: {home_automation_response}")
             # If this was a device control command, send notification to all users
             if any(keyword in message_text.lower() for keyword in ['turn on', 'turn off', 'switch on', 'switch off']):
                 device_name = None
@@ -258,7 +286,9 @@ class ToggleTalkFlaskServer:
                 if device_name:
                     device_display_name = self.get_device_user_name(device_name)
                     action = 'ON' if any(keyword in message_text.lower() for keyword in ['turn on', 'switch on']) else 'OFF'
-                    notification_msg = f"🔔 {user_name}: {device_display_name} turned {action}"
+                    # Format notification according to specification
+                    current_time = datetime.now().strftime("%H:%M:%S")
+                    notification_msg = f"[NOTIFICATION] 🔔 {user_name}: {device_display_name} turned {action} at {current_time}"
                     # Add to pending notifications for client retrieval
                     self.add_pending_notification(notification_msg)
             
@@ -267,13 +297,18 @@ class ToggleTalkFlaskServer:
         # Handle natural language queries
         message_lower = message_text.lower()
         
+        # Log Details command
+        if 'log details' in message_lower:
+            log_details = self.get_log_details()
+            return log_details
+        
         # Greeting responses
         if any(greeting in message_lower for greeting in ['hello', 'hi', 'hey', 'greetings']):
             return f"Hello {user_name}! Welcome to ToggleTalk Server!"
         
         # Help responses
         if any(help_word in message_lower for help_word in ['help', 'what can you do', 'commands']):
-            return f"Hello {user_name}! I can help you control your home appliances! Try commands like 'Turn on the light' or 'Turn off the AC'."
+            return f"Hello {user_name}! I can help you control your home appliances and security system! Try commands like 'Turn on the light', 'Turn off the AC', 'Initialize security system', or 'Terminate security system'."
         
         # Status queries
         if any(status_word in message_lower for status_word in ['status', 'state', 'how is']):
@@ -281,6 +316,10 @@ class ToggleTalkFlaskServer:
             for device, info in self.home_devices.items():
                 device_name = self.get_device_user_name(device)
                 status_message += f"• {device_name}: {info['status'].title()}\n"
+            
+            # Add security system status
+            security_status = "ACTIVE" if self.security_system_active else "INACTIVE"
+            status_message += f"• Home Security System: {security_status}\n"
             return status_message
         
         # Default response for unrecognized commands
@@ -307,6 +346,66 @@ class ToggleTalkFlaskServer:
                 update_status_line(f"Event: {event_type} - {message[:50]}{'...' if len(message) > 50 else ''}")
         except Exception as e:
             logger.error(f"Error logging event: {e}")
+            # Also log the error to console
+            update_status_line(f"Log Error: {e}")
+    
+    def get_log_details(self):
+        """Retrieve and format log details for display"""
+        try:
+            log_entries = []
+            if os.path.exists(EVENTS_LOG_FILE):
+                with open(EVENTS_LOG_FILE, 'r') as f:
+                    lines = f.readlines()
+                    # Parse all log entries
+                    for line in lines:
+                        try:
+                            entry = json.loads(line.strip())
+                            log_entries.append(entry)
+                        except json.JSONDecodeError:
+                            # Skip invalid lines
+                            continue
+            
+            # Sort by timestamp (newest first)
+            log_entries.sort(key=lambda x: x['timestamp'], reverse=True)
+            
+            # Format the log details
+            if not log_entries:
+                return "No log entries found."
+            
+            # Create a formatted log display
+            log_lines = ["=" * 60]
+            log_lines.append("DETAILED SERVER LOGS")
+            log_lines.append("=" * 60)
+            log_lines.append(f"Total Events: {len(log_entries)}")
+            log_lines.append("")
+            
+            # Show last 20 events with detailed formatting
+            for i, entry in enumerate(log_entries[:20]):
+                timestamp = entry.get('timestamp', 'Unknown')
+                event_type = entry.get('event_type', 'Unknown')
+                message = entry.get('message', 'No message')
+                user_name = entry.get('user_name', 'Unknown')
+                user_id = entry.get('user_id', 'Unknown')
+                
+                # Format timestamp for better readability
+                try:
+                    dt = datetime.fromisoformat(timestamp)
+                    formatted_time = dt.strftime("%Y-%m-%d %H:%M:%S")
+                except:
+                    formatted_time = timestamp
+                
+                log_lines.append(f"[{i+1:2d}] {formatted_time}")
+                log_lines.append(f"     Type: {event_type}")
+                log_lines.append(f"     User: {user_name} (ID: {user_id})")
+                log_lines.append(f"     Message: {message}")
+                log_lines.append("")
+            
+            log_lines.append("=" * 60)
+            return "\n".join(log_lines)
+        
+        except Exception as e:
+            logger.error(f"Error retrieving log details: {e}")
+            return f"Error retrieving log details: {e}"
     
     def load_user_preferences(self):
         """Load user preferences from file with retry mechanism"""
@@ -586,11 +685,17 @@ class ToggleTalkFlaskServer:
                 if tasks_to_remove:
                     self.save_scheduled_tasks()
                 
+                # Check security system for suspicious activity if active
+                if self.security_system_active:
+                    self.check_security_system()
+                
                 # Update status with scheduler info
                 if self.scheduled_tasks:
                     next_task = min(self.scheduled_tasks, key=lambda x: x['scheduled_time'])
                     time_diff = next_task['scheduled_time'] - current_time
                     update_status_line(f"Scheduler: {len(self.scheduled_tasks)} tasks, next in {time_diff.seconds//60}m {time_diff.seconds%60}s")
+                elif self.security_system_active:
+                    update_status_line("Scheduler: Security system active, monitoring for activity")
                 else:
                     update_status_line("Scheduler: No scheduled tasks")
                 
@@ -620,7 +725,9 @@ class ToggleTalkFlaskServer:
                 # Create notification message
                 device_display_name = self.get_device_user_name(device_name)
                 action_display = "ON" if action == "on" else "OFF"
-                notification_msg = f"⏰ Scheduled: {device_display_name} turned {action_display} by {user_name}"
+                # Format scheduled notification according to specification
+                current_time = datetime.now().strftime("%H:%M:%S")
+                notification_msg = f"[NOTIFICATION] 🔔 {user_name}: {device_display_name} turned {action_display} at {current_time}"
                 
                 # Add notification to queue to be sent by main thread
                 notification_queue.put(notification_msg)
@@ -648,6 +755,7 @@ class ToggleTalkFlaskServer:
     def process_home_automation(self, text: str, user_name: str = "User") -> str:
         """Process home automation commands for the three appliances only"""
         text = text.lower()
+        logger.info(f"Processing home automation command: {text} from {user_name}")
         
         # Check for scheduled commands
         if 'schedule' in text or 'timer' in text:
@@ -659,6 +767,8 @@ class ToggleTalkFlaskServer:
                 self.home_devices['washing_machine']['status'] = 'on'
                 success = self.control_gpio_device('washing_machine', 'on')
                 if success:
+                    # Log the event
+                    self.log_event("device_control", "Washing Machine turned ON", user_name)
                     return "✅ Washing Machine turned ON."
                 else:
                     return "⚠️ Error turning on Washing Machine. Please try again."
@@ -666,6 +776,8 @@ class ToggleTalkFlaskServer:
                 self.home_devices['washing_machine']['status'] = 'off'
                 success = self.control_gpio_device('washing_machine', 'off')
                 if success:
+                    # Log the event
+                    self.log_event("device_control", "Washing Machine turned OFF", user_name)
                     return "✅ Washing Machine turned OFF."
                 else:
                     return "⚠️ Error turning off Washing Machine. Please try again."
@@ -679,6 +791,8 @@ class ToggleTalkFlaskServer:
                 self.home_devices['ac']['status'] = 'on'
                 success = self.control_gpio_device('ac', 'on')
                 if success:
+                    # Log the event
+                    self.log_event("device_control", "Air Conditioner turned ON", user_name)
                     return "✅ Air Conditioner turned ON."
                 else:
                     return "⚠️ Error turning on Air Conditioner. Please try again."
@@ -686,6 +800,8 @@ class ToggleTalkFlaskServer:
                 self.home_devices['ac']['status'] = 'off'
                 success = self.control_gpio_device('ac', 'off')
                 if success:
+                    # Log the event
+                    self.log_event("device_control", "Air Conditioner turned OFF", user_name)
                     return "✅ Air Conditioner turned OFF."
                 else:
                     return "⚠️ Error turning off Air Conditioner. Please try again."
@@ -699,6 +815,8 @@ class ToggleTalkFlaskServer:
                 self.home_devices['light']['status'] = 'on'
                 success = self.control_gpio_device('light', 'on')
                 if success:
+                    # Log the event
+                    self.log_event("device_control", "Light turned ON", user_name)
                     return "✅ Light turned ON."
                 else:
                     return "⚠️ Error turning on light. Please try again."
@@ -706,6 +824,8 @@ class ToggleTalkFlaskServer:
                 self.home_devices['light']['status'] = 'off'
                 success = self.control_gpio_device('light', 'off')
                 if success:
+                    # Log the event
+                    self.log_event("device_control", "Light turned OFF", user_name)
                     return "✅ Light turned OFF."
                 else:
                     return "⚠️ Error turning off light. Please try again."
@@ -713,23 +833,41 @@ class ToggleTalkFlaskServer:
                 status = self.home_devices['light']['status']
                 return f"💡 Light is currently {status}."
         
+        # Home Security System control
+        elif 'security' in text or 'laser' in text or 'intruder' in text:
+            if 'initialize' in text or 'start' in text or 'activate' in text or 'arm' in text:
+                result = self.initialize_security_system(user_name)
+                # Log the event
+                self.log_event("security_system", "Security system initialized", user_name)
+                return result
+            elif 'terminate' in text or 'stop' in text or 'deactivate' in text or 'disarm' in text:
+                result = self.terminate_security_system(user_name)
+                # Log the event
+                self.log_event("security_system", "Security system terminated", user_name)
+                return result
+            else:
+                status = "ACTIVE" if self.security_system_active else "INACTIVE"
+                return f"🛡️ Home Security System is currently {status}."
+        
         return ""  # Not a home automation command
     
     def _process_scheduled_command(self, text: str, user_name: str) -> str:
         """Process scheduled home automation commands"""
         # Extract time from text (e.g., "in 5 minutes", "at 3:30 PM")
-        time_match = re.search(r'in\s+(\d+)\s+(minute|minutes|hour|hours)', text)
+        time_match = re.search(r'in\s+(\d+)\s+(second|seconds|minute|minutes|hour|hours)', text)
         if time_match:
             amount = int(time_match.group(1))
             unit = time_match.group(2)
             
             # Calculate scheduled time
-            if 'minute' in unit:
+            if 'second' in unit:
+                scheduled_time = datetime.now() + timedelta(seconds=amount)
+            elif 'minute' in unit:
                 scheduled_time = datetime.now() + timedelta(minutes=amount)
             elif 'hour' in unit:
                 scheduled_time = datetime.now() + timedelta(hours=amount)
             else:
-                return "⚠️ Unsupported time unit. Please use minutes or hours."
+                return "⚠️ Unsupported time unit. Please use seconds, minutes or hours."
             
             # Determine device and action
             device_name = None
@@ -760,7 +898,7 @@ class ToggleTalkFlaskServer:
                 
                 device_display_name = self.get_device_user_name(device_name)
                 action_display = "ON" if action == "on" else "OFF"
-                time_display = scheduled_time.strftime("%H:%M")
+                time_display = scheduled_time.strftime("%H:%M:%S")
                 
                 # Log the event
                 self.log_event("scheduled_task_created", f"Scheduled {device_display_name} to turn {action_display} at {time_display}", user_name)
@@ -769,7 +907,7 @@ class ToggleTalkFlaskServer:
             else:
                 return "⚠️ Could not determine device or action for scheduling."
         
-        return "⚠️ Unsupported schedule format. Try: 'Schedule light on in 5 minutes"
+        return "⚠️ Unsupported schedule format. Try: 'Schedule light on in 30 seconds' or 'Schedule light on in 5 minutes' or 'Schedule ac off in 1 hour'"
 
     def get_device_user_name(self, device_name):
         """Get user-friendly name for devices"""
@@ -779,6 +917,73 @@ class ToggleTalkFlaskServer:
             'washing_machine': 'Washing Machine'
         }
         return device_names.get(device_name, device_name.replace('_', ' ').title())
+    
+    def initialize_security_system(self, user_name):
+        """Initialize the home security system with laser module, LDR sensor, and buzzer"""
+        if not GPIO_AVAILABLE or GPIO is None:
+            return "⚠️ Security system requires Raspberry Pi with GPIO support. Running in simulation mode."
+        
+        try:
+            # Turn on the laser module
+            GPIO.setup(GPIO_PINS['laser_module'], GPIO.OUT)
+            GPIO.output(GPIO_PINS['laser_module'], GPIO.HIGH)  # Turn on laser
+            
+            # Setup LDR sensor as input
+            GPIO.setup(GPIO_PINS['ldr_sensor'], GPIO.IN)
+            
+            # Setup buzzer as output
+            GPIO.setup(GPIO_PINS['buzzer'], GPIO.OUT)
+            GPIO.output(GPIO_PINS['buzzer'], GPIO.LOW)  # Turn off buzzer initially
+            
+            # Update security system state
+            self.security_system_active = True
+            
+            # Log the event
+            self.log_event("security_system_activated", f"Home security system activated by {user_name}", user_name)
+            
+            # Send notification to all users
+            current_time = datetime.now().strftime("%H:%M:%S")
+            notification_msg = f"[NOTIFICATION] 🛡️ {user_name}: Home Security System INITIALIZED at {current_time}"
+            self.add_pending_notification(notification_msg)
+            
+            return "✅ Home Security System INITIALIZED. Laser module activated and monitoring for intruders."
+        except Exception as e:
+            error_msg = f"⚠️ Error initializing security system: {e}"
+            logger.error(error_msg)
+            return error_msg
+    
+    def terminate_security_system(self, user_name):
+        """Terminate the home security system"""
+        if not GPIO_AVAILABLE or GPIO is None:
+            return "⚠️ Security system requires Raspberry Pi with GPIO support. Running in simulation mode."
+        
+        try:
+            # Turn off the laser module
+            if 'laser_module' in GPIO_PINS:
+                GPIO.setup(GPIO_PINS['laser_module'], GPIO.OUT)
+                GPIO.output(GPIO_PINS['laser_module'], GPIO.LOW)  # Turn off laser
+            
+            # Turn off buzzer if it's on
+            if 'buzzer' in GPIO_PINS:
+                GPIO.setup(GPIO_PINS['buzzer'], GPIO.OUT)
+                GPIO.output(GPIO_PINS['buzzer'], GPIO.LOW)  # Turn off buzzer
+            
+            # Update security system state
+            self.security_system_active = False
+            
+            # Log the event
+            self.log_event("security_system_deactivated", f"Home security system deactivated by {user_name}", user_name)
+            
+            # Send notification to all users
+            current_time = datetime.now().strftime("%H:%M:%S")
+            notification_msg = f"[NOTIFICATION] 🛡️ {user_name}: Home Security System TERMINATED at {current_time}"
+            self.add_pending_notification(notification_msg)
+            
+            return "✅ Home Security System TERMINATED. All modules deactivated."
+        except Exception as e:
+            error_msg = f"⚠️ Error terminating security system: {e}"
+            logger.error(error_msg)
+            return error_msg
 
     def control_gpio_device(self, device_name, action):
         """Control GPIO devices (relays) connected to Raspberry Pi with enhanced error handling"""
@@ -847,6 +1052,37 @@ class ToggleTalkFlaskServer:
         
         # This should never be reached, but just in case
         return False
+    
+    def check_security_system(self):
+        """Check for suspicious activity from LDR sensor when security system is active"""
+        if not self.security_system_active or not GPIO_AVAILABLE or GPIO is None:
+            return
+        
+        try:
+            # Check if LDR sensor detects a change (indicating possible intruder)
+            # In a real implementation, this would be more sophisticated
+            ldr_value = GPIO.input(GPIO_PINS['ldr_sensor'])
+            
+            # If LDR detects a change (logic depends on how the sensor is connected)
+            # For this example, we'll assume HIGH means suspicious activity
+            if ldr_value == GPIO.HIGH:
+                # Activate buzzer
+                GPIO.output(GPIO_PINS['buzzer'], GPIO.HIGH)
+                
+                # Send notification about suspicious activity
+                current_time = datetime.now().strftime("%H:%M:%S")
+                notification_msg = f"[ALERT] 🚨 Suspicious activity detected by Home Security System at {current_time}"
+                self.add_pending_notification(notification_msg)
+                
+                logger.info("Suspicious activity detected by security system")
+                add_console_line(f"🚨 Security Alert: Suspicious activity detected at {current_time}")
+                update_status_line("Security Alert: Suspicious activity detected")
+                
+                # Keep buzzer on for 5 seconds
+                time.sleep(5)
+                GPIO.output(GPIO_PINS['buzzer'], GPIO.LOW)
+        except Exception as e:
+            logger.error(f"Error checking security system: {e}")
 
 # Create Flask app
 app = Flask(__name__)
@@ -862,7 +1098,7 @@ def send_message():
     global total_messages_processed, total_processing_time
     
     # Record start time for latency tracking
-    start_time = time.time()
+    message_start_time = time.time()
     
     try:
         # Get JSON data from request
@@ -892,12 +1128,16 @@ def send_message():
         }
         message_history.append(message_entry)
         
+        # Log that we received the message
+        logger.info(f"Received message: {message} from {user_name} (ID: {user_id})")
+        
         # Register the chat ID for notification broadcasting
         server.add_chat_id(user_id)
         
         # Process the message through the server
         try:
             response = server.generate_response(message, user_id, user_name)
+            logger.info(f"Generated response: {response}")
         except Exception as e:
             logger.error(f"Error in generate_response: {e}")
             response = f"Sorry {user_name}, I encountered an error processing your request."
@@ -913,7 +1153,7 @@ def send_message():
         message_history.append(response_entry)
         
         # Update message processing statistics
-        processing_time = time.time() - start_time
+        processing_time = time.time() - message_start_time
         global total_messages_processed, total_processing_time
         total_messages_processed += 1
         total_processing_time += processing_time
@@ -950,9 +1190,9 @@ def send_message():
                     action = 'ON' if any(keyword in message_lower for keyword in ['turn on', 'switch on']) else 'OFF'
                     device_display_name = server.get_device_user_name(device_name)
                     
-                    # Format the notification message with timestamp
+                    # Format the notification message with timestamp according to specification
                     current_time = datetime.now().strftime("%H:%M:%S")
-                    notification_msg = f"🔔 {user_name}: {message} at {current_time}"
+                    notification_msg = f"[NOTIFICATION] 🔔 {user_name}: {message} at {current_time}"
                     
                     try:
                         # Add to pending notifications for client retrieval
@@ -969,12 +1209,34 @@ def send_message():
                         message_history.append(notification_entry)
                         
                         # Also send notification to all connected applications
-                        full_notification = f"[NOTIFICATION] {notification_msg}"
                         # Add notification to queue to be sent by main thread
-                        notification_queue.put(full_notification)
+                        notification_queue.put(notification_msg)
                     except Exception as e:
                         logger.error(f"Error handling notification: {e}")
                         # Continue processing even if notification fails
+        elif any(keyword in message_lower for keyword in ['initialize', 'start', 'activate', 'arm', 'terminate', 'stop', 'deactivate', 'disarm']):
+            # For security system commands, also send notifications to all users
+            current_time = datetime.now().strftime("%H:%M:%S")
+            notification_msg = f"[NOTIFICATION] 🔔 {user_name}: {message} at {current_time}"
+            
+            try:
+                # Add to pending notifications for client retrieval
+                server.add_pending_notification(notification_msg)
+                
+                # Track notification in history
+                notification_entry = {
+                    'type': 'notification',
+                    'text': notification_msg[:50] + "..." if len(notification_msg) > 50 else notification_msg,
+                    'timestamp': datetime.now(),
+                    'user': user_name,
+                    'user_id': user_id
+                }
+                message_history.append(notification_entry)
+                
+                # Also send notification to all connected applications
+                notification_queue.put(notification_msg)
+            except Exception as e:
+                logger.error(f"Error handling security system notification: {e}")
         
         return jsonify({
             'status': 'success',

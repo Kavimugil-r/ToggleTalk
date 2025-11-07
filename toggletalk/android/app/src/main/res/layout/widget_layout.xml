@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_layout"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_background"
+    android:padding="12dp">
+
+    <!-- Header -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="#FFD600"
+        android:padding="8dp"
+        android:layout_marginBottom="12dp"
+        android:gravity="center_vertical">
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@drawable/ic_launcher_foreground"
+            android:layout_marginEnd="8dp" />
+
+        <TextView
+            android:id="@+id/widget_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="ToggleTalk"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="#000000"
+            android:gravity="start" />
+
+    </LinearLayout>
+
+    <!-- Appliance Controls -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:weightSum="3">
+
+        <!-- Light Control -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="4dp">
+
+            <ImageButton
+                android:id="@+id/btn_light"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:background="@drawable/appliance_button_background"
+                android:scaleType="centerInside"
+                android:src="@drawable/light_off_widget"
+                android:tag="light_off" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Light"
+                android:textSize="12sp"
+                android:textColor="#000000"
+                android:layout_marginTop="4dp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- AC Control -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="4dp">
+
+            <ImageButton
+                android:id="@+id/btn_ac"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:background="@drawable/appliance_button_background"
+                android:scaleType="centerInside"
+                android:src="@drawable/ac_off_widget"
+                android:tag="ac_off" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="AC"
+                android:textSize="12sp"
+                android:textColor="#000000"
+                android:layout_marginTop="4dp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- Washing Machine Control -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="4dp">
+
+            <ImageButton
+                android:id="@+id/btn_washing_machine"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:background="@drawable/appliance_button_background"
+                android:scaleType="centerInside"
+                android:src="@drawable/washing_machine_off_widget"
+                android:tag="washing_machine_off" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Washing"
+                android:textSize="12sp"
+                android:textColor="#000000"
+                android:layout_marginTop="4dp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+
+</LinearLayout>

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:home_widget/home_widget.dart';
+import 'home_widget_service.dart';
 
 class ProfilePage extends StatefulWidget {
   final Function(String)? onNameUpdated; // Add callback for name updates
@@ -14,6 +16,7 @@ class _ProfilePageState extends State<ProfilePage> {
   final TextEditingController _nameController = TextEditingController();
   String _userName = 'User';
   bool _isNameChanged = false;
+  bool _isNameSaved = false; // Track if name has been saved
 
   @override
   void initState() {
@@ -39,6 +42,8 @@ class _ProfilePageState extends State<ProfilePage> {
         _userName = prefs.getString('user_name') ?? 'User';
         _nameController.text = _userName;
         _isNameChanged = false; // Reset change flag
+        _isNameSaved =
+            _userName != 'User'; // If name is not default, consider it saved
       });
     } catch (e) {
       print('Error loading username: $e');
@@ -47,6 +52,7 @@ class _ProfilePageState extends State<ProfilePage> {
         _userName = 'User';
         _nameController.text = _userName;
         _isNameChanged = false;
+        _isNameSaved = false;
       });
     }
   }
@@ -79,7 +85,12 @@ class _ProfilePageState extends State<ProfilePage> {
       setState(() {
         _userName = trimmedName;
         _isNameChanged = false; // Reset change flag after saving
+        _isNameSaved = true; // Mark name as saved
       });
+
+      // Update home widget with new user name
+      print('Updating widget with new user name: $trimmedName');
+      await HomeWidgetService.updateUserName(trimmedName);
 
       // Notify the parent widget (main app) about the name update
       widget.onNameUpdated?.call(trimmedName);
@@ -89,11 +100,6 @@ class _ProfilePageState extends State<ProfilePage> {
           const SnackBar(content: Text('Name saved successfully!')),
         );
       }
-
-      // Also save to the main app's state
-      // This ensures the name is immediately available in the main app
-      final mainAppPrefs = await SharedPreferences.getInstance();
-      await mainAppPrefs.setString('user_name', trimmedName);
     } catch (e) {
       print('Error saving username: $e');
       if (mounted) {
@@ -104,61 +110,89 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  Future<bool> _onWillPop() async {
+    if (_isNameSaved) {
+      // Name has been saved, allow popping
+      return true;
+    } else {
+      // Name not saved, show confirmation dialog
+      return (await showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Name Not Saved'),
+              content: const Text(
+                'Please enter and save your name before leaving this page.',
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          )) ??
+          false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profile'),
-        backgroundColor: Colors.yellow[300],
-        foregroundColor: Colors.black,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: SingleChildScrollView(
-          // Wrap with SingleChildScrollView to prevent pixel loss
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'User Profile',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 30),
-              const Text(
-                'Name:',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _nameController,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  hintText: 'Enter your name',
+    return WillPopScope(
+      onWillPop: _onWillPop,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Profile'),
+          backgroundColor: Colors.yellow[300],
+          foregroundColor: Colors.black,
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: SingleChildScrollView(
+            // Wrap with SingleChildScrollView to prevent pixel loss
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'User Profile',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                 ),
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: _isNameChanged
-                    ? _saveUserName
-                    : null, // Disable button when no changes
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.yellow[300],
-                  foregroundColor: Colors.black,
+                const SizedBox(height: 30),
+                const Text(
+                  'Name:',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
                 ),
-                child: const Text('Save Name'),
-              ),
-              const SizedBox(height: 30),
-              const Text(
-                'About ToggleTalk',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'ToggleTalk is a smart home automation system that allows you to control your appliances through API commands. '
-                'When any user sends a command to control an appliance, all users will receive a notification about the action.',
-                style: TextStyle(fontSize: 16),
-              ),
-            ],
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    hintText: 'Enter your name',
+                  ),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: _isNameChanged
+                      ? _saveUserName
+                      : null, // Disable button when no changes
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.yellow[300],
+                    foregroundColor: Colors.black,
+                  ),
+                  child: const Text('Save Name'),
+                ),
+                const SizedBox(height: 30),
+                const Text(
+                  'About ToggleTalk',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'ToggleTalk is a smart home automation system that allows you to control your appliances through API commands. '
+                  'When any user sends a command to control an appliance, all users will receive a notification about the action.',
+                  style: TextStyle(fontSize: 16),
+                ),
+              ],
+            ),
           ),
         ),
       ),

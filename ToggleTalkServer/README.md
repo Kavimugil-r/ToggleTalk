@@ -108,8 +108,15 @@ ToggleTalk uses a proper client-server architecture:
 - "Turn on/off the light"
 - "Turn on/off the AC" or "Air Conditioner"
 - "Turn on/off the Washing Machine"
-- "Schedule light on in 30 minutes"
+- "Schedule light on in 30 seconds"
+- "Schedule light on in 5 minutes"
 - "Schedule ac off in 1 hour"
+
+### Home Security System Commands
+
+- "Initialize security system" or "Start security system" or "Activate security system" or "Arm security system"
+- "Terminate security system" or "Stop security system" or "Deactivate security system" or "Disarm security system"
+- "What's the status of the security system?" or "Is the security system active?"
 
 ### Message Format
 
@@ -155,10 +162,16 @@ Messages are sent with user context for personalized responses.
 - Device status: "💡 Light is currently on."
 - Error conditions: "⚠️ Error turning on light. Please try again."
 
+#### Home Security System Responses
+- System initialization: "✅ Home Security System INITIALIZED. Laser module activated and monitoring for intruders."
+- System termination: "✅ Home Security System TERMINATED. All modules deactivated."
+- System status: "🛡️ Home Security System is currently ACTIVE." or "🛡️ Home Security System is currently INACTIVE."
+- Security alert: "🚨 Suspicious activity detected by Home Security System at HH:MM:SS"
+
 #### Conversation Responses
 - Greetings: "Hello John! Welcome to ToggleTalk Server!"
-- Help requests: "Hello John! I can help you control your home appliances! Try commands like 'Turn on the light' or 'Turn off the AC'."
-- Status queries: "🏠 John, Current Device Status:\n• Light: On\n• Air Conditioner: Off\n• Washing Machine: Off"
+- Help requests: "Hello John! I can help you control your home appliances and security system! Try commands like 'Turn on the light', 'Turn off the AC', 'Initialize security system', or 'Terminate security system'."
+- Status queries: "🏠 John, Current Device Status:\n• Light: On\n• Air Conditioner: Off\n• Washing Machine: Off\n• Home Security System: Active"
 
 #### Scheduled Task Responses
 - Task creation: "⏰ Scheduled Light to turn ON at 14:30."
@@ -176,17 +189,69 @@ The server implements comprehensive error handling:
 
 ### Raspberry Pi Deployment
 
+For Raspberry Pi deployment, you can use the systemd service and management scripts:
+
+1. **Setup the service**:
+   ```bash
+   # Copy the service file to systemd directory
+   sudo cp toggletalk.service /etc/systemd/system/
+   
+   # Reload systemd daemon
+   sudo systemctl daemon-reload
+   
+   # Enable the service to start on boot
+   sudo systemctl enable toggletalk
+   ```
+
+2. **Using systemd (recommended for production)**:
+   ```bash
+   # Start the service
+   sudo systemctl start toggletalk
+   
+   # Enable auto-start on boot
+   sudo systemctl enable toggletalk
+   
+   # Check status
+   sudo systemctl status toggletalk
+   
+   # View logs
+   sudo journalctl -u toggletalk -f
+   ```
+
+## GPIO Pin Configuration
+
+On Raspberry Pi 3 Model B+:
+
+### Home Automation Appliances
+| GPIO Pin | Appliance        | Relay Channel |
+|----------|------------------|---------------|
+| 23       | Light            | Relay 1       |
+| 24       | Air Conditioner  | Relay 2       |
+| 25       | Washing Machine  | Relay 3       |
+
+### Home Security System
+| GPIO Pin | Component        | Function              |
+|----------|------------------|-----------------------|
+| 27       | Laser Module     | Intruder detection    |
+| 22       | LDR Sensor       | Light sensing         |
+| 5        | Buzzer           | Audio alerts          |
+
+**Note**: GPIO pins are configurable via environment variables. Defaults are shown above.
+**Note**: The system includes simulation mode for testing on non-Raspberry Pi platforms.
+
+### Cross-Platform Startup Scripts
+
 Use the provided startup scripts:
 
 ```bash
 # Make the script executable (Linux/Raspberry Pi)
-chmod +x start_flask_server.sh
+chmod +x StartToggleTalkBotServer.sh
 
 # Start the server (Windows)
-start_flask_server.bat
+StartToggleTalkBotServer.bat
 
 # Start the server (Linux/Raspberry Pi)
-./start_flask_server.sh
+./StartToggleTalkBotServer.sh
 ```
 
 ### Reliability Features
@@ -323,8 +388,8 @@ ToggleTalk/
 │   ├── ToggleTalkBotServer.py         # Main server application
 │   ├── requirements.txt       # Python dependencies
 │   ├── requirements_windows.txt # Windows-specific dependencies
-│   ├── start_flask_server.bat # Startup script for Windows
-│   ├── start_flask_server.sh  # Startup script for Linux/Raspberry Pi
+│   ├── StartToggleTalkBotServer.bat # Startup script for Windows
+│   ├── StartToggleTalkBotServer.sh  # Startup script for Linux/Raspberry Pi
 │   ├── chat_ids.json          # Registered user chat IDs
 │   ├── user_preferences.json  # User preferences
 │   ├── scheduled_tasks.json   # Scheduled appliance tasks

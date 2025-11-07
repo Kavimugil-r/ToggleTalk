@@ -258,23 +258,27 @@ Health check endpoint for monitoring server status.
 - **Lights**: "Turn on the lights", "Turn off the lights"
 - **Air Conditioner**: "Turn on the AC", "Turn off the AC"
 - **Washing Machine**: "Turn on the washing machine", "Turn off the washing machine"
+- **Security System**: "Initialize security system", "Terminate security system"
 
 ### Status Queries
 - "What's the status of the lights?"
 - "What's the status of the AC?"
 - "What's the status of the washing machine?"
+- "What's the status of the security system?"
 
 ### General Conversation
 - "Hello", "Hi", "How are you?"
 - "What time is it?"
 - "What's your name?"
+- "Help" or "What can you do?"
 
 ## Scheduled Tasks
 
 Users can schedule appliances to turn ON/OFF at specific times:
 
 ### Scheduling Commands
-- "Schedule light on in 30 minutes"
+- "Schedule light on in 30 seconds"
+- "Schedule light on in 5 minutes"
 - "Schedule ac off in 1 hour"
 - "Schedule washing machine on in 2 hours"
 
@@ -318,11 +322,19 @@ The server maintains an `events.log` file that clients can retrieve using the AP
 
 On Raspberry Pi 3 Model B+:
 
+### Home Automation Appliances
 | GPIO Pin | Appliance        | Relay Channel |
 |----------|------------------|---------------|
 | 23       | Light            | Relay 1       |
 | 24       | Air Conditioner  | Relay 2       |
 | 25       | Washing Machine  | Relay 3       |
+
+### Home Security System
+| GPIO Pin | Component        | Function              |
+|----------|------------------|-----------------------|
+| 27       | Laser Module     | Intruder detection    |
+| 22       | LDR Sensor       | Light sensing         |
+| 5        | Buzzer           | Audio alerts          |
 
 **Note**: GPIO pins are configurable via environment variables. Defaults are shown above.
 **Note**: The system includes simulation mode for testing on non-Raspberry Pi platforms.
@@ -331,7 +343,7 @@ On Raspberry Pi 3 Model B+:
 
 ```
 flow/
-├── ToggleTalkServer/          # Python server implementation
+├── ToggleTalkServer/             # Python server implementation
 │   ├── ToggleTalkBotServer.py        # Main server application
 │   ├── requirements.txt      # Server dependencies
 │   ├── chat_ids.json         # Registered user chat IDs

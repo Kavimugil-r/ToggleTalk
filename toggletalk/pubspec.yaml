@@ -51,6 +51,9 @@ dependencies:
   # For native splash screen
   flutter_native_splash: ^2.4.0
   lottie: ^3.3.2
+  # For home widget
+  home_widget: ^0.7.0
+  feature_discovery: ^0.14.2
 
 dev_dependencies:
   flutter_test:

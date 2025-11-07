@@ -160,6 +160,15 @@ class _NotificationScreenState extends State<NotificationScreen>
     });
   }
 
+  // Helper method to format notification text
+  String _formatNotificationText(String text) {
+    // If it's a notification with the [NOTIFICATION] prefix, remove it for display
+    if (text.startsWith('[NOTIFICATION] ')) {
+      return text.substring(15); // Remove '[NOTIFICATION] '
+    }
+    return text;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -240,7 +249,9 @@ class _NotificationScreenState extends State<NotificationScreen>
                                         CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        notification.text,
+                                        _formatNotificationText(
+                                          notification.text,
+                                        ),
                                         style: const TextStyle(
                                           fontSize: 16,
                                           fontFamily: 'Comfortaa',

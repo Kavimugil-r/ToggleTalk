@@ -42,6 +42,25 @@
             </intent-filter>
         </activity>
         
+        <!-- Home Widget Provider -->
+        <receiver android:name=".ToggleTalkWidgetProvider" android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.example.toggletalk.TOGGLE_LIGHT" />
+                <action android:name="com.example.toggletalk.TOGGLE_AC" />
+                <action android:name="com.example.toggletalk.TOGGLE_WASHING_MACHINE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                       android:resource="@xml/widget_info" />
+        </receiver>
+        
+        <!-- Broadcast receiver for widget actions -->
+        <receiver android:name=".WidgetBroadcastReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="com.example.toggletalk.TOGGLE_APPLIANCE" />
+            </intent-filter>
+        </receiver>
+        
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

@@ -1,0 +1,19 @@
+[Unit]
+Description=ToggleTalk Smart Home Automation Server
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/flow/ToggleTalkServer
+ExecStart=/home/pi/flow/ToggleTalkServer/venv/bin/python ToggleTalkBotServer.py
+Restart=always
+RestartSec=5
+Environment=AUTHORIZED_CHAT_ID=1767023771
+Environment=SERVER_PORT=7850
+Environment=LIGHT_GPIO_PIN=23
+Environment=AC_GPIO_PIN=24
+Environment=WASHING_MACHINE_GPIO_PIN=25
+
+[Install]
+WantedBy=multi-user.target

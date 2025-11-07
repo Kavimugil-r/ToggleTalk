@@ -19,14 +19,22 @@ import 'package:flutter/animation.dart';
 // Add device info
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart'; // Add MethodChannel
 // Add splash screen
 import 'splash_screen.dart';
 // Add test screen
-import 'test_screen.dart';
+
+import 'package:home_widget/home_widget.dart';
+import 'home_widget_service.dart';
+// Add feature discovery
+import 'package:feature_discovery/feature_discovery.dart';
 
 // Initialize local notifications
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
+
+// Method channel for handling Android widget broadcasts
+const MethodChannel platform = MethodChannel('com.example.toggletalk/widget');
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -44,6 +52,7 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   bool _showSplash = true;
   bool _initError = false;
+  bool _hasShownPermissionsDialog = false; // Add this flag
 
   @override
   void initState() {
@@ -54,6 +63,8 @@ class _MyAppState extends State<MyApp> {
   Future<void> _initializeApp() async {
     try {
       await _initializeNotifications();
+      // Initialize home widget
+      await HomeWidgetService.init();
     } catch (e) {
       print('Error during app initialization: $e');
       setState(() {
@@ -149,18 +160,21 @@ class ToggleTalkApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'ToggleTalk',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.yellow, // Changed to yellow accent color
+    return FeatureDiscovery(
+      recordStepsInSharedPreferences: false,
+      child: MaterialApp(
+        title: 'ToggleTalk',
+        theme: ThemeData(
+          useMaterial3: true,
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: Colors.yellow, // Changed to yellow accent color
+          ),
+          // Use custom fonts throughout the app
+          fontFamily: 'Comfortaa', // Default font for the app
         ),
-        // Use custom fonts throughout the app
-        fontFamily: 'Comfortaa', // Default font for the app
+        home: const ToggleTalkScreen(),
+        debugShowCheckedModeBanner: false,
       ),
-      home: const ToggleTalkScreen(),
-      debugShowCheckedModeBanner: false,
     );
   }
 }
@@ -254,10 +268,18 @@ class _ToggleTalkScreenState extends State<ToggleTalkScreen>
     'AUTHORIZED_CHAT_ID',
     defaultValue: 1767023771,
   ); // Configurable chat ID
+
+  // Generate a unique user ID for each app instance
+  final int _uniqueUserId = DateTime.now().millisecondsSinceEpoch;
   Timer? _pollingTimer; // Add this line to store the polling timer
 
   // User name for context injection
   String _userName = 'User';
+
+  // Home widget appliance states
+  bool _homeWidgetLightOn = false;
+  bool _homeWidgetAcOn = false;
+  bool _homeWidgetWashingMachineOn = false;
 
   // Removed notification key
 
@@ -278,7 +300,7 @@ class _ToggleTalkScreenState extends State<ToggleTalkScreen>
   // Server API endpoint - change this to your server's IP address
   static const String SERVER_API_URL = String.fromEnvironment(
     'SERVER_API_URL',
-    defaultValue: 'http://localhost:7850/api',
+    defaultValue: 'http://192.168.244.80:7850/api',
   ); // Configurable server URL
 
   @override
@@ -287,6 +309,9 @@ class _ToggleTalkScreenState extends State<ToggleTalkScreen>
     _initializeApp();
     // Add observer for app lifecycle changes
     WidgetsBinding.instance.addObserver(this);
+
+    // Set up MethodChannel handler for Android widget broadcasts
+    platform.setMethodCallHandler(_handleMethod);
   }
 
   @override
@@ -300,6 +325,32 @@ class _ToggleTalkScreenState extends State<ToggleTalkScreen>
     _audioRecorder.closeRecorder();
     _animationController.dispose(); // Dispose animation controller
     super.dispose();
+  }
+
+  // Handle method calls from Android widget
+  Future<dynamic> _handleMethod(MethodCall call) async {
+    switch (call.method) {
+      case 'toggleAppliance':
+        final String appliance = call.arguments['appliance'];
+        // Get current state and toggle it
+        bool currentState = false;
+        switch (appliance) {
+          case 'light':
+            currentState = _homeWidgetLightOn;
+            break;
+          case 'ac':
+            currentState = _homeWidgetAcOn;
+            break;
+          case 'washing_machine':
+            currentState = _homeWidgetWashingMachineOn;
+            break;
+        }
+        // Send command to toggle the appliance
+        await _toggleApplianceFromWidget(appliance, !currentState);
+        break;
+      default:
+        throw MissingPluginException('Method not implemented');
+    }
   }
 
   @override
@@ -333,7 +384,11 @@ class _ToggleTalkScreenState extends State<ToggleTalkScreen>
         },
       );
 
-      if (!permissionsGranted) {
+      // Always show permissions dialog on first launch
+      final prefs = await SharedPreferences.getInstance();
+      final hasLaunchedBefore = prefs.getBool('has_launched_before') ?? false;
+
+      if (!hasLaunchedBefore || !permissionsGranted) {
         // Show explanation dialog and request permissions with timeout
         await _showPermissionDialog().timeout(
           Duration(seconds: 10),
@@ -342,6 +397,9 @@ class _ToggleTalkScreenState extends State<ToggleTalkScreen>
             return Future.value();
           },
         );
+
+        // Mark that the app has been launched before
+        await prefs.setBool('has_launched_before', true);
       }
 
       await _loadMessages().timeout(
@@ -391,6 +449,16 @@ class _ToggleTalkScreenState extends State<ToggleTalkScreen>
       setState(() {
         _isInitialized = true;
       });
+
+      // Start feature discovery walkthrough after a short delay
+      if (!hasLaunchedBefore) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Future.delayed(Duration(seconds: 2), () {
+            _startFeatureDiscovery();
+          });
+        });
+      }
+
       print('App initialization complete');
     } catch (e, stackTrace) {
       print('Error during app initialization: $e');
@@ -425,6 +493,41 @@ class _ToggleTalkScreenState extends State<ToggleTalkScreen>
     }
   }
 
+  Future<void> _initializeNotifications() async {
+    try {
+      // Initialize local notifications with timeout
+      const AndroidInitializationSettings initializationSettingsAndroid =
+          AndroidInitializationSettings('app_icon');
+
+      const DarwinInitializationSettings initializationSettingsDarwin =
+          DarwinInitializationSettings();
+
+      const InitializationSettings initializationSettings =
+          InitializationSettings(
+            android: initializationSettingsAndroid,
+            iOS: initializationSettingsDarwin,
+          );
+
+      await flutterLocalNotificationsPlugin
+          .initialize(
+            initializationSettings,
+            onDidReceiveNotificationResponse:
+                (NotificationResponse notificationResponse) async {
+                  // Handle notification tap
+                },
+          )
+          .timeout(
+            Duration(seconds: 10),
+            onTimeout: () {
+              print('Notification initialization timed out');
+              return Future.value(false);
+            },
+          );
+    } catch (e) {
+      print('Error initializing notifications: $e');
+    }
+  }
+
   Future<void> _loadUserName() async {
     try {
       final prefs = await SharedPreferences.getInstance().timeout(
@@ -441,12 +544,18 @@ class _ToggleTalkScreenState extends State<ToggleTalkScreen>
         _userName = prefs.getString('user_name') ?? 'User';
       });
       print('Loaded username: $_userName');
+
+      // Also update the home widget with the loaded username
+      await HomeWidgetService.updateUserName(_userName);
     } catch (e) {
       print('Error loading username: $e');
       // Use default username if there's an error
       setState(() {
         _userName = 'User';
       });
+
+      // Also update the home widget with the default username
+      await HomeWidgetService.updateUserName(_userName);
     }
   }
 
@@ -744,9 +853,7 @@ class _ToggleTalkScreenState extends State<ToggleTalkScreen>
     // Check if this is a notification message
     if (messageText.startsWith('[NOTIFICATION]')) {
       // Extract the actual notification text
-      final notificationText = messageText.substring(
-        14,
-      ); // Remove '[NOTIFICATION] '
+      final notificationText = messageText;
 
       // Save the notification
       final timestamp = DateTime.now();
@@ -780,6 +887,9 @@ class _ToggleTalkScreenState extends State<ToggleTalkScreen>
           ),
         );
       }
+
+      // Update home widget with the notification
+      await _updateHomeWidgetFromNotification(notificationText);
     } else {
       // Regular bot response
       final timestamp = DateTime.now();
@@ -798,6 +908,53 @@ class _ToggleTalkScreenState extends State<ToggleTalkScreen>
       _saveMessages();
 
       print('Processed bot response: $messageText');
+    }
+  }
+
+  // Update home widget based on notification content
+  Future<void> _updateHomeWidgetFromNotification(
+    String notificationText,
+  ) async {
+    try {
+      // Parse the notification to determine which appliance was controlled
+      // Expected format: [NOTIFICATION] 🔔 {username}: {message} at {time}
+      bool lightOn = false;
+      bool acOn = false;
+      bool washingMachineOn = false;
+      bool stateChanged = false;
+
+      if (notificationText.contains('light') &&
+          notificationText.contains('turned')) {
+        lightOn = notificationText.contains('turned ON');
+        stateChanged = true;
+      } else if (notificationText.contains('Air Conditioner') &&
+          notificationText.contains('turned')) {
+        acOn = notificationText.contains('turned ON');
+        stateChanged = true;
+      } else if (notificationText.contains('Washing Machine') &&
+          notificationText.contains('turned')) {
+        washingMachineOn = notificationText.contains('turned ON');
+        stateChanged = true;
+      }
+
+      if (stateChanged) {
+        // Get current states from widget
+        final currentStates = await HomeWidgetService.getApplianceStates();
+
+        // Update only the changed appliance
+        if (notificationText.contains('light')) {
+          currentStates['light'] = lightOn;
+        } else if (notificationText.contains('Air Conditioner')) {
+          currentStates['ac'] = acOn;
+        } else if (notificationText.contains('Washing Machine')) {
+          currentStates['washing_machine'] = washingMachineOn;
+        }
+
+        // Update widget UI with new states
+        await HomeWidgetService.updateWidgetUI(currentStates, _userName);
+      }
+    } catch (e) {
+      print('Error updating home widget from notification: $e');
     }
   }
 
@@ -1013,6 +1170,47 @@ class _ToggleTalkScreenState extends State<ToggleTalkScreen>
     }
   }
 
+  /// Toggle appliance from home widget
+  Future<void> _toggleApplianceFromWidget(
+    String appliance,
+    bool newValue,
+  ) async {
+    // Send command to server
+    final success = await HomeWidgetService.sendCommand(
+      appliance,
+      newValue,
+      _userName,
+    );
+
+    if (success) {
+      // Update local widget state
+      setState(() {
+        switch (appliance) {
+          case 'light':
+            _homeWidgetLightOn = newValue;
+            break;
+          case 'ac':
+            _homeWidgetAcOn = newValue;
+            break;
+          case 'washing_machine':
+            _homeWidgetWashingMachineOn = newValue;
+            break;
+        }
+      });
+
+      // Update home widget UI
+      final states = {
+        'light': _homeWidgetLightOn,
+        'ac': _homeWidgetAcOn,
+        'washing_machine': _homeWidgetWashingMachineOn,
+      };
+      await HomeWidgetService.updateWidgetUI(states, _userName);
+    } else {
+      // Show error feedback to user
+      print('Failed to toggle $appliance from widget');
+    }
+  }
+
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
 
@@ -1119,8 +1317,7 @@ class _ToggleTalkScreenState extends State<ToggleTalkScreen>
             body: json.encode({
               'message': text,
               'user_name': _userName,
-              'user_id':
-                  AUTHORIZED_CHAT_ID, // Use chat ID as user ID for tracking
+              'user_id': _uniqueUserId, // Use unique user ID for tracking
             }),
           )
           .timeout(Duration(seconds: 15));
@@ -1319,7 +1516,7 @@ class _ToggleTalkScreenState extends State<ToggleTalkScreen>
         await _speechToText.stop().timeout(
           Duration(seconds: 5),
           onTimeout: () {
-            print('Speech recognition stop timed out');
+            print('Speech recognition stop timedout');
             return Future.value();
           },
         );
@@ -1490,100 +1687,9 @@ class _ToggleTalkScreenState extends State<ToggleTalkScreen>
     );
   }
 
+  // Main app UI
   @override
   Widget build(BuildContext context) {
-    // Show error screen if initialization failed
-    if (_initError) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('ToggleTalk - Initialization Error'),
-          backgroundColor: Colors.red,
-          foregroundColor: Colors.white,
-        ),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.error, color: Colors.red, size: 48),
-                const SizedBox(height: 16),
-                const Text(
-                  'Failed to initialize the app',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Error: $_initErrorMessage',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.grey),
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      _initError = false;
-                      _initErrorMessage = '';
-                      _isInitialized = false;
-                    });
-                    _initializeApp();
-                  },
-                  child: const Text('Retry'),
-                ),
-                const SizedBox(height: 16),
-                TextButton(
-                  onPressed: () {
-                    // Navigate to test screen
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const TestScreen(),
-                      ),
-                    );
-                  },
-                  child: const Text('Test Screen'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    // Show loading indicator while initializing
-    if (!_isInitialized) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('ToggleTalk'),
-          backgroundColor: Colors.yellow[300],
-          foregroundColor: Colors.black,
-          actions: [
-            TextButton(
-              onPressed: () {
-                // Navigate to test screen
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const TestScreen()),
-                );
-              },
-              child: const Text('Test'),
-            ),
-          ],
-        ),
-        body: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Initializing ToggleTalk...'),
-            ],
-          ),
-        ),
-      );
-    }
-
-    // Main app UI
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -1598,25 +1704,31 @@ class _ToggleTalkScreenState extends State<ToggleTalkScreen>
         backgroundColor: Colors.yellow[300], // Changed to light yellow
         foregroundColor: Colors.black,
         // Add the bot icon to the app bar for better branding
-        leading: IconButton(
-          icon: const CircularBotIcon(
-            size: 20.0,
-            backgroundColor: Colors.transparent, // Use transparent background
-          ),
-          onPressed: () {
-            // Navigate to profile page when tapping the bot icon
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => ProfilePage(
-                  onNameUpdated: (newName) {
-                    // Refresh the username when it's updated in the profile
-                    _refreshUserName();
-                  },
+        leading: DescribedFeatureOverlay(
+          featureId: 'profile_icon',
+          tapTarget: const Icon(Icons.person),
+          title: Text('Your Profile'),
+          description: Text('Tap here to set your name '),
+          child: IconButton(
+            icon: const CircularBotIcon(
+              size: 20.0,
+              backgroundColor: Colors.transparent, // Use transparent background
+            ),
+            onPressed: () {
+              // Navigate to profile page when tapping the bot icon
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ProfilePage(
+                    onNameUpdated: (newName) {
+                      // Refresh the username when it's updated in the profile
+                      _refreshUserName();
+                    },
+                  ),
                 ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         ),
         actions: [
           IconButton(
@@ -1689,15 +1801,23 @@ class _ToggleTalkScreenState extends State<ToggleTalkScreen>
                                 ),
                               ),
                             ),
-                          IconButton(
-                            iconSize: 28,
-                            icon: Icon(
-                              _isListening ? Icons.mic_off : Icons.mic,
-                              color: _isListening
-                                  ? Colors.red
-                                  : Colors.yellow[700], // Changed to yellow
+                          DescribedFeatureOverlay(
+                            featureId: 'mic_icon',
+                            tapTarget: const Icon(Icons.mic),
+                            title: Text('Voice Messages'),
+                            description: Text(
+                              'Tap and hold to record voice messages',
                             ),
-                            onPressed: _startListening,
+                            child: IconButton(
+                              iconSize: 28,
+                              icon: Icon(
+                                _isListening ? Icons.mic_off : Icons.mic,
+                                color: _isListening
+                                    ? Colors.red
+                                    : Colors.yellow[700], // Changed to yellow
+                              ),
+                              onPressed: _startListening,
+                            ),
                           ),
                         ],
                       ),
@@ -1739,37 +1859,45 @@ class _ToggleTalkScreenState extends State<ToggleTalkScreen>
                         ),
                       ),
                       const SizedBox(width: 8),
-                      FloatingActionButton(
-                        onPressed: () {
-                          final text = _textController.text;
-                          if (text.trim().isNotEmpty) {
-                            // If speech recognition is active, stop it first
-                            if (_isListening) {
-                              _speechToText.stop();
-                              setState(() {
-                                _isListening = false;
-                                _transcribedText = '';
-                              });
+                      DescribedFeatureOverlay(
+                        featureId: 'send_icon',
+                        tapTarget: const Icon(Icons.send),
+                        title: Text('Send Messages'),
+                        description: Text(
+                          'Tap to send your text or voice message',
+                        ),
+                        child: FloatingActionButton(
+                          onPressed: () {
+                            final text = _textController.text;
+                            if (text.trim().isNotEmpty) {
+                              // If speech recognition is active, stop it first
+                              if (_isListening) {
+                                _speechToText.stop();
+                                setState(() {
+                                  _isListening = false;
+                                  _transcribedText = '';
+                                });
+                              }
+                              _sendMessage(text);
                             }
-                            _sendMessage(text);
-                          }
-                        },
-                        backgroundColor:
-                            Colors.transparent, // Made transparent as requested
-                        elevation: 0, // Remove shadow
-                        shape: CircleBorder(), // Make it a true circle
-                        child: _isLoading
-                            ? SizedBox(
-                                width: 12,
-                                height: 12,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.black,
+                          },
+                          backgroundColor: Colors
+                              .transparent, // Made transparent as requested
+                          elevation: 0, // Remove shadow
+                          shape: CircleBorder(), // Make it a true circle
+                          child: _isLoading
+                              ? SizedBox(
+                                  width: 12,
+                                  height: 12,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.black,
+                                    ),
                                   ),
-                                ),
-                              )
-                            : const Icon(Icons.send, color: Colors.black),
+                                )
+                              : const Icon(Icons.send, color: Colors.black),
+                        ),
                       ),
                     ],
                   ),
@@ -1828,9 +1956,47 @@ class _ToggleTalkScreenState extends State<ToggleTalkScreen>
         _userName = prefs.getString('user_name') ?? 'User';
       });
       print('Username refreshed: $_userName');
+
+      // Also update the home widget with the new username
+      await HomeWidgetService.updateUserName(_userName);
     } catch (e) {
       print('Error refreshing username: $e');
       // Keep current username if there's an error
+    }
+  }
+
+  /// Start the feature discovery walkthrough
+  Future<void> _startFeatureDiscovery() async {
+    try {
+      // Wait a bit for the UI to settle
+      await Future.delayed(Duration(milliseconds: 500));
+
+      // Start the feature discovery walkthrough
+      FeatureDiscovery.discoverFeatures(context, const [
+        'mic_icon',
+        'send_icon',
+        'profile_icon',
+      ]);
+
+      // Wait for feature discovery to complete and then navigate to profile
+      // Assuming feature discovery takes about 3 seconds per feature with some buffer
+      Future.delayed(Duration(seconds: 9), () {
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ProfilePage(
+                onNameUpdated: (newName) {
+                  // Refresh the username when it's updated in the profile
+                  _refreshUserName();
+                },
+              ),
+            ),
+          );
+        }
+      });
+    } catch (e) {
+      print('Error starting feature discovery: $e');
     }
   }
 }
