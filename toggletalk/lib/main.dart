@@ -276,6 +276,9 @@ class _ToggleTalkScreenState extends State<ToggleTalkScreen>
   // User name for context injection
   String _userName = 'User';
 
+  // Set to track processed notification IDs to avoid duplicates
+  final Set<int> _processedNotificationIds = <int>{};
+
   // Home widget appliance states
   bool _homeWidgetLightOn = false;
   bool _homeWidgetAcOn = false;
@@ -819,6 +822,15 @@ class _ToggleTalkScreenState extends State<ToggleTalkScreen>
           final List<dynamic> notifications = data['notifications'];
 
           for (var notification in notifications) {
+            // Get notification ID from the server, or create one based on text and timestamp if not present
+            final notificationId = notification['id'] != null 
+                ? notification['id'] as int
+                : notification['text'].toString().hashCode;
+          
+            // Only process notifications we haven't seen before
+            if (!_processedNotificationIds.contains(notificationId)) {
+              _processedNotificationIds.add(notificationId);
+            
             final notificationText = notification['text'] as String;
             final timestamp = DateTime.parse(
               notification['timestamp'] as String,
@@ -829,24 +841,36 @@ class _ToggleTalkScreenState extends State<ToggleTalkScreen>
             // Process the notification
             await _processNotificationMessage(notificationText);
           }
+        
+        // Periodically clean up the processed notifications set to prevent it from growing indefinitely
+        // Keep only the most recent 200 notification IDs
+        if (_processedNotificationIds.length > 200) {
+          // Since we can't directly remove elements from a Set by index,
+          // we'll create a new set with the most recent notifications
+          // For now, we'll just clear the set periodically as a simple solution
+          if (_processedNotificationIds.length > 500) {
+            _processedNotificationIds.clear();
+            print('Cleared processed notification IDs set to prevent memory growth');
+          }
         }
-      } else {
-        print(
-          'Failed to fetch notifications. Status code: ${response.statusCode}',
-        );
       }
-    } catch (e) {
-      print('Error fetching notifications: $e');
-      // Continue polling even if there's an error
-    } finally {
-      // If we're still showing loading indicator, hide it
-      if (_isLoading) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+    } else {
+      print(
+        'Failed to fetch notifications. Status code: ${response.statusCode}',
+      );
+    }
+  } catch (e) {
+    print('Error fetching notifications: $e');
+    // Continue polling even if there's an error
+  } finally {
+    // If we're still showing loading indicator, hide it
+    if (_isLoading) {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
+}
 
   // Process incoming notification messages
   Future<void> _processNotificationMessage(String messageText) async {

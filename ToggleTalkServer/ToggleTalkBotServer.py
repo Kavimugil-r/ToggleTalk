@@ -619,13 +619,25 @@ class ToggleTalkFlaskServer:
         if timestamp is None:
             timestamp = datetime.now().isoformat()
         
+        # Generate a unique ID based on timestamp and text to ensure uniqueness
+        # even if notifications are cleared
+        import hashlib
+        notification_hash = hashlib.md5(f"{notification_text}{timestamp}".encode()).hexdigest()
+        unique_id = int(notification_hash[:8], 16)  # Take first 8 hex chars and convert to int
+        
         notification = {
             'text': notification_text,
             'timestamp': timestamp,
-            'id': len(self.pending_notifications) + 1
+            'id': unique_id
         }
         
         self.pending_notifications.append(notification)
+        
+        # Limit the number of pending notifications to prevent file from growing indefinitely
+        # Keep only the most recent 100 notifications
+        if len(self.pending_notifications) > 100:
+            self.pending_notifications = self.pending_notifications[-100:]
+        
         self.save_pending_notifications()
         logger.info(f"Added pending notification: {notification_text}")
         logger.info(f"Total pending notifications: {len(self.pending_notifications)}")
@@ -1255,8 +1267,9 @@ def get_notifications():
     """API endpoint for mobile app to get pending notifications"""
     try:
         notifications = server.get_pending_notifications()
-        # Clear the notifications after sending them
-        server.clear_pending_notifications()
+        # DO NOT clear the notifications after sending them
+        # Each client should get all pending notifications
+        # The client will manage its own notification state
         return jsonify({
             'status': 'success',
             'notifications': notifications,
