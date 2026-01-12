@@ -342,7 +342,7 @@ On Raspberry Pi 3 Model B+:
 ## Project Structure
 
 ```
-flow/
+ToggleTalk/
 ├── ToggleTalkServer/             # Python server implementation
 │   ├── ToggleTalkBotServer.py        # Main server application
 │   ├── requirements.txt      # Server dependencies
